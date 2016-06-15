@@ -40,7 +40,7 @@ module Refile
     # @param [Hash] s3_options          Additional options to initialize S3 with
     # @see http://docs.aws.amazon.com/AWSRubySDK/latest/AWS/Core/Configuration.html
     # @see http://docs.aws.amazon.com/AWSRubySDK/latest/AWS/S3.html
-    def initialize(region:, bucket:, max_size: nil, prefix: nil, hasher: Refile::RandomHasher.new, **s3_options)
+    def initialize(region:, bucket:, max_size: nil, prefix: nil, acl: 'public-resd', hasher: Refile::RandomHasher.new, **s3_options)
       @s3_options = { region: region }.merge s3_options
       @s3 = Aws::S3::Resource.new @s3_options
       credentials = @s3.client.config.credentials
@@ -51,6 +51,7 @@ module Refile
       @hasher = hasher
       @prefix = prefix
       @max_size = max_size
+      @acl = acl
     end
 
     # Upload a file into this backend
@@ -61,9 +62,9 @@ module Refile
       id = @hasher.hash(uploadable)
 
       if uploadable.is_a?(Refile::File) and uploadable.backend.is_a?(S3) and uploadable.backend.access_key_id == access_key_id
-        object(id).copy_from(copy_source: [@bucket_name, uploadable.backend.object(uploadable.id).key].join("/"))
+        object(id).copy_from(copy_source: [@bucket_name, uploadable.backend.object(uploadable.id).key].join("/"), acl: @acl)
       else
-        object(id).put(body: uploadable, content_length: uploadable.size)
+        object(id).put(body: uploadable, content_length: uploadable.size, acl: @acl)
       end
 
       Refile::File.new(self, id)
@@ -145,7 +146,7 @@ module Refile
     # @return [Refile::Signature]
     def presign
       id = RandomHasher.new.hash
-      signature = @bucket.presigned_post(key: [*@prefix, id].join("/"))
+      signature = @bucket.presigned_post(key: [*@prefix, id].join("/"), acl: @acl)
       signature.content_length_range(0..@max_size) if @max_size
       Signature.new(as: "file", id: id, url: signature.url.to_s, fields: signature.fields)
     end
